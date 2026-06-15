@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -64,7 +65,8 @@ func initializeLogger() (*log.Logger, error) {
 		if err != nil {
 			return nil, err
 		}
-		multilogger := io.MultiWriter(os.Stderr, file)
+		bufferFile := bufio.NewWriterSize(file, 8192)
+		multilogger := io.MultiWriter(os.Stderr, bufferFile)
 		return log.New(multilogger, "", log.LstdFlags), nil
 	}
 	return log.New(os.Stderr, "", log.LstdFlags), nil
