@@ -15,6 +15,8 @@ import (
 	"boot.dev/linko/internal/store"
 )
 
+type closeFunction func() error
+
 func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -29,10 +31,17 @@ func main() {
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
-	logger, err := initializeLogger()
+	logger, closingFunc, err := initializeLogger()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 	}
+	defer func() error {
+		if err := closingFunc(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error al intentar cerrar el archivo: %v", err)
+		}
+		return nil
+	}()
+
 	st, err := store.New(dataDir, logger)
 	if err != nil {
 		logger.Printf("failed to create store: %v", err)
@@ -59,15 +68,23 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	return 0
 }
 
-func initializeLogger() (*log.Logger, error) {
+func initializeLogger() (*log.Logger, closeFunction, error) {
 	if os.Getenv(("LINKO_LOG_FILE")) != "" {
 		file, err := os.OpenFile("linko.access.log", os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0o644)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		bufferFile := bufio.NewWriterSize(file, 8192)
 		multilogger := io.MultiWriter(os.Stderr, bufferFile)
-		return log.New(multilogger, "", log.LstdFlags), nil
+		return log.New(multilogger, "", log.LstdFlags), func() error {
+			if err := bufferFile.Flush(); err != nil {
+				return err
+			}
+			if err := file.Close(); err != nil {
+				return err
+			}
+			return nil
+		}, nil
 	}
-	return log.New(os.Stderr, "", log.LstdFlags), nil
+	return log.New(os.Stderr, "", log.LstdFlags), nil, nil
 }
