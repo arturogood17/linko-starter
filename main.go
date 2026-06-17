@@ -34,6 +34,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	logger, closingFunc, err := initializeLogger()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
+		return 1
 	}
 	defer func() error {
 		if err := closingFunc(); err != nil {
