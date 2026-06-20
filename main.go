@@ -82,7 +82,7 @@ func initializeLogger() (*slog.Logger, closeFunction, error) {
 			return nil, nil, err
 		}
 		bufferFile := bufio.NewWriterSize(file, 8192)
-		handlers = append(handlers, slog.NewTextHandler(bufferFile, &slog.HandlerOptions{
+		handlers = append(handlers, slog.NewJSONHandler(bufferFile, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
 		}))
 		return slog.New(slog.NewMultiHandler(handlers...)), func() error {
