@@ -73,7 +73,8 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 func initializeLogger() (*slog.Logger, closeFunction, error) {
 	handlers := []slog.Handler{
 		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
+			Level:       slog.LevelDebug,
+			ReplaceAttr: resplaceAttr,
 		}),
 	}
 	if os.Getenv(("LINKO_LOG_FILE")) != "" {
@@ -83,7 +84,8 @@ func initializeLogger() (*slog.Logger, closeFunction, error) {
 		}
 		bufferFile := bufio.NewWriterSize(file, 8192)
 		handlers = append(handlers, slog.NewJSONHandler(bufferFile, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
+			Level:       slog.LevelInfo,
+			ReplaceAttr: resplaceAttr,
 		}))
 		return slog.New(slog.NewMultiHandler(handlers...)), func() error {
 			if err := bufferFile.Flush(); err != nil {
@@ -96,4 +98,15 @@ func initializeLogger() (*slog.Logger, closeFunction, error) {
 		}, nil
 	}
 	return slog.New(slog.NewMultiHandler(handlers...)), nil, nil
+}
+
+func resplaceAttr(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == "error" {
+		err, ok := a.Value.Any().(error)
+		if !ok {
+			return a
+		}
+		return slog.String("error", fmt.Sprintf("%+v", err))
+	}
+	return a
 }
