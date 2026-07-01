@@ -16,6 +16,7 @@ import (
 
 	pkgerr "github.com/pkg/errors"
 
+	"boot.dev/linko/internal/build"
 	"boot.dev/linko/internal/store"
 )
 
@@ -40,6 +41,11 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		return 1
 	}
+	logger = logger.With(
+		slog.String("git_sha", build.GitSHA),       //Gets this information at runtime to added to the logs
+		slog.String("build_time", build.BuildTime), //Gets this information at runtime to added to the logs
+	)
+
 	defer func() error {
 		if closingFunc != nil {
 			if err := closingFunc(); err != nil {
