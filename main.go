@@ -51,7 +51,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
-		logger.Error("failed to create store", slog.String("error", err.Error()))
+		logger.Error("failed to create store", "error", err)
 		return 1
 	}
 	s := newServer(*st, httpPort, cancel, logger)
@@ -111,23 +111,17 @@ func resplaceAttr(groups []string, a slog.Attr) slog.Attr {
 		if !ok {
 			return a
 		}
-
-		attrs := []slog.Attr{
-			{
-				Key:   "message",
-				Value: slog.StringValue(err.Error()),
-			},
-		}
-		attrs = append(attrs, linkoerr.Attrs(err)...)
-
-		if stackErr, ok := errors.AsType[stackTracer](err); ok {
-			attrs = append(attrs, slog.Attr{
-				Key:   "stack_trace",
-				Value: slog.StringValue(fmt.Sprintf("%+v", stackErr.StackTrace())),
-			})
+		var attrs []slog.Attr
+		if multiERR, ok := errors.AsType[multiError](err); ok {
+			for i, me := range multiERR.Unwrap() {
+				errSlice := errorAttrs(me)
+				attrs = append(attrs, slog.GroupAttrs(fmt.Sprintf("error_%d", i+1), errSlice...))
+			}
+			return slog.GroupAttrs("errors", attrs...)
+		} else {
+			attrs = append(attrs, errorAttrs(err)...)
 		}
 		return slog.GroupAttrs("error", attrs...)
-
 	}
 	return a
 }
@@ -135,4 +129,27 @@ func resplaceAttr(groups []string, a slog.Attr) slog.Attr {
 type stackTracer interface {
 	error
 	StackTrace() pkgerr.StackTrace
+}
+
+type multiError interface {
+	error
+	Unwrap() []error
+}
+
+func errorAttrs(err error) []slog.Attr {
+	attrs := []slog.Attr{
+		{
+			Key:   "message",
+			Value: slog.StringValue(err.Error()),
+		},
+	}
+	attrs = append(attrs, linkoerr.Attrs(err)...)
+
+	if stackErr, ok := errors.AsType[stackTracer](err); ok {
+		attrs = append(attrs, slog.Attr{
+			Key:   "stack_trace",
+			Value: slog.StringValue(fmt.Sprintf("%+v", stackErr.StackTrace())),
+		})
+	}
+	return attrs
 }
