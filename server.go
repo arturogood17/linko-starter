@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"boot.dev/linko/internal/store"
 )
@@ -75,8 +77,46 @@ func (s *server) handlerShutdown(w http.ResponseWriter, r *http.Request) {
 func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r)
-			logger.Info("Served request", slog.String("method", r.Method), slog.String("path", r.URL.Path), slog.String("client_ip", r.RemoteAddr))
+			start := time.Now()
+			spyW := &spyWrapper{ReadCloser: r.Body}
+			spyR := &spyResponse{ResponseWriter: w}
+			r.Body = spyW
+			next.ServeHTTP(spyR, r)
+			logger.Info("Served request", slog.String("method", r.Method), slog.String("path", r.URL.Path),
+				slog.String("client_ip", r.RemoteAddr), slog.Duration("duration", time.Since(start)),
+				slog.Int("request_body_bytes", spyW.bytesRead), slog.Int("response_body_bytes", spyR.responseBytes),
+				slog.Int("response_status", spyR.responseStatus))
 		})
 	}
+}
+
+type spyWrapper struct {
+	io.ReadCloser
+	bytesRead int
+}
+
+func (r *spyWrapper) Read(p []byte) (int, error) {
+	n, err := r.ReadCloser.Read(p)
+	r.bytesRead += n
+	return n, err
+}
+
+type spyResponse struct {
+	http.ResponseWriter
+	responseStatus int
+	responseBytes  int
+}
+
+func (s *spyResponse) Write(p []byte) (int, error) {
+	if s.responseStatus == 0 {
+		s.responseStatus = http.StatusOK
+	}
+	n, err := s.ResponseWriter.Write(p)
+	s.responseBytes += n
+	return n, err
+}
+
+func (s *spyResponse) WriteHeader(statusCode int) {
+	s.responseStatus = statusCode
+	s.ResponseWriter.WriteHeader(statusCode)
 }
