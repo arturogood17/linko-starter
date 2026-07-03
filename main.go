@@ -41,7 +41,16 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		return 1
 	}
+	env := os.Getenv("ENV")
+	hostname, err := os.Hostname()
+	if err != nil {
+		logger.Error("Error trying to get the hostname", "error", err)
+		return 1
+	}
+
 	logger = logger.With(
+		slog.String("env", env),                    //Lo saca Go y se agrega al logger en runtime luego
+		slog.String("hostname", hostname),          //Lo saca Go y se agrega al logger en runtime luego
 		slog.String("git_sha", build.GitSHA),       //Gets this information at runtime to added to the logs
 		slog.String("build_time", build.BuildTime), //Gets this information at runtime to added to the logs
 	)
