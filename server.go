@@ -14,6 +14,12 @@ import (
 	"boot.dev/linko/internal/store"
 )
 
+const logContextKey contextKey = "log_context"
+
+type LogContext struct {
+	Username string
+}
+
 type server struct {
 	httpServer *http.Server
 	store      store.Store
@@ -81,11 +87,20 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			spyW := &spyWrapper{ReadCloser: r.Body}
 			spyR := &spyResponse{ResponseWriter: w}
 			r.Body = spyW
-			next.ServeHTTP(spyR, r)
-			logger.Info("Served request", slog.String("method", r.Method), slog.String("path", r.URL.Path),
+			loggerContext := &LogContext{}
+			r = r.WithContext(context.WithValue(r.Context(), logContextKey, loggerContext)) //Se crea una copia de request
+			next.ServeHTTP(spyR, r)                                                         //con contexto modificado al que se le agrega
+			attrs := []any{                                                                 //un puntuero a un struct
+				slog.String("method", r.Method), //unas variables en forma clave:valor
+				slog.String("path", r.URL.Path),
 				slog.String("client_ip", r.RemoteAddr), slog.Duration("duration", time.Since(start)),
 				slog.Int("request_body_bytes", spyW.bytesRead), slog.Int("response_body_bytes", spyR.responseBytes),
-				slog.Int("response_status", spyR.responseStatus))
+				slog.Int("response_status", spyR.responseStatus),
+			}
+			if loggerContext.Username != "" {
+				attrs = append(attrs, slog.String("user", loggerContext.Username))
+			}
+			logger.Info("Served request", attrs...)
 		})
 	}
 }

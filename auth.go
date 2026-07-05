@@ -9,7 +9,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type contextKey string
+type contextKey string //se crea este tipo para evitar conflictos, por ejemplo, si tuvieses varias claves con el mismo nombre
 
 const UserContextKey contextKey = "user"
 
@@ -43,8 +43,11 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, username))
-		next.ServeHTTP(w, r)
+		if val, ok := r.Context().Value(logContextKey).(*LogContext); ok {
+			val.Username = username
+		}
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, username)) //Esto se tiene que quedar
+		next.ServeHTTP(w, r)                                                        //porque es parte de la request, no del logger
 	})
 }
 
