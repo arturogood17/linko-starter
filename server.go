@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -39,7 +40,7 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 
 	s.httpServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: RequestLogger(logger)(mux),
+		Handler: requestMiddleware(RequestLogger(logger)(mux)),
 	}
 
 	mux.HandleFunc("GET /", s.handlerIndex)
@@ -91,12 +92,14 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			loggerContext := &LogContext{}
 			r = r.WithContext(context.WithValue(r.Context(), logContextKey, loggerContext)) //Se crea una copia de request
 			next.ServeHTTP(spyR, r)                                                         //con contexto modificado al que se le agrega
-			attrs := []any{                                                                 //un puntuero a un struct
+			requestId := spyR.Header().Get("X-Request-ID")                                  //un puntuero a un struct
+			attrs := []any{
 				slog.String("method", r.Method), //unas variables en forma clave:valor
 				slog.String("path", r.URL.Path),
 				slog.String("client_ip", r.RemoteAddr), slog.Duration("duration", time.Since(start)),
 				slog.Int("request_body_bytes", spyW.bytesRead), slog.Int("response_body_bytes", spyR.responseBytes),
 				slog.Int("response_status", spyR.responseStatus),
+				slog.String("request_id", requestId),
 			}
 			if loggerContext.Username != "" {
 				attrs = append(attrs, slog.String("user", loggerContext.Username))
@@ -145,4 +148,15 @@ func httpError(c context.Context, w http.ResponseWriter, err error, statusC int)
 		logCtx.Error = err
 	}
 	http.Error(w, err.Error(), statusC)
+}
+
+func requestMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = rand.Text()
+		}
+		w.Header().Set("X-Request-ID", requestID)
+		next.ServeHTTP(w, r)
+	})
 }
