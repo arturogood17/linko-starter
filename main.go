@@ -14,10 +14,12 @@ import (
 
 	"boot.dev/linko/internal/linkoerr"
 
+	"github.com/lmittmann/tint"
 	pkgerr "github.com/pkg/errors"
 
 	"boot.dev/linko/internal/build"
 	"boot.dev/linko/internal/store"
+	"github.com/mattn/go-isatty"
 )
 
 type closeFunction func() error
@@ -91,11 +93,13 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 }
 
 func initializeLogger() (*slog.Logger, closeFunction, error) {
+
 	handlers := []slog.Handler{
-		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		tint.NewHandler(os.Stderr, &tint.Options{
 			Level:       slog.LevelDebug,
 			ReplaceAttr: resplaceAttr,
-		}),
+			NoColor:     !(isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())), //revisamos si estamos
+		}), //en una terminal
 	}
 	if os.Getenv(("LINKO_LOG_FILE")) != "" {
 		file, err := os.OpenFile("linko.access.log", os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0o644)
