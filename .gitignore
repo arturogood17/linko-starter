@@ -3,3 +3,5 @@ linko
 *~
 vendor/
 *.log
+*.gz
+*.sh

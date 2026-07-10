@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"boot.dev/linko/internal/linkoerr"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/lmittmann/tint"
 	pkgerr "github.com/pkg/errors"
@@ -101,21 +101,24 @@ func initializeLogger() (*slog.Logger, closeFunction, error) {
 			NoColor:     !(isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())), //revisamos si estamos
 		}), //en una terminal
 	}
-	if os.Getenv(("LINKO_LOG_FILE")) != "" {
-		file, err := os.OpenFile("linko.access.log", os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0o644)
-		if err != nil {
-			return nil, nil, err
+
+	logFile := os.Getenv("LINKO_LOG_FILE")
+
+	if logFile != "" {
+		logger := &lumberjack.Logger{
+			Filename:   logFile,
+			MaxSize:    1,
+			MaxAge:     28,
+			MaxBackups: 10,
+			LocalTime:  false,
+			Compress:   true,
 		}
-		bufferFile := bufio.NewWriterSize(file, 8192)
-		handlers = append(handlers, slog.NewJSONHandler(bufferFile, &slog.HandlerOptions{
+		handlers = append(handlers, slog.NewJSONHandler(logger, &slog.HandlerOptions{
 			Level:       slog.LevelInfo,
 			ReplaceAttr: resplaceAttr,
 		}))
 		return slog.New(slog.NewMultiHandler(handlers...)), func() error {
-			if err := bufferFile.Flush(); err != nil {
-				return err
-			}
-			if err := file.Close(); err != nil {
+			if err := logger.Close(); err != nil {
 				return err
 			}
 			return nil
