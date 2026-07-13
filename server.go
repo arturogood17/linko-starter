@@ -147,7 +147,13 @@ func httpError(c context.Context, w http.ResponseWriter, err error, statusC int)
 	if logCtx, ok := c.Value(logContextKey).(*LogContext); ok {
 		logCtx.Error = err
 	}
-	http.Error(w, err.Error(), statusC)
+	errorMsg := err.Error()
+
+	if statusC == 401 || statusC == 403 || statusC == 500 {
+		errorMsg = http.StatusText(statusC)
+	}
+
+	http.Error(w, errorMsg, statusC)
 }
 
 func requestMiddleware(next http.Handler) http.Handler {
