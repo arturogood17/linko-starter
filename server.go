@@ -89,6 +89,11 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			spyW := &spyWrapper{ReadCloser: r.Body}
 			spyR := &spyResponse{ResponseWriter: w}
 			r.Body = spyW
+			IPredacted, err := redactedIP(r.RemoteAddr)
+			if err != nil {
+				logger.Error("Error redacting the IP address", "error", err.Error())
+				return
+			}
 			loggerContext := &LogContext{}
 			r = r.WithContext(context.WithValue(r.Context(), logContextKey, loggerContext)) //Se crea una copia de request
 			next.ServeHTTP(spyR, r)                                                         //con contexto modificado al que se le agrega
@@ -96,7 +101,7 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			attrs := []any{
 				slog.String("method", r.Method), //unas variables en forma clave:valor
 				slog.String("path", r.URL.Path),
-				slog.String("client_ip", r.RemoteAddr), slog.Duration("duration", time.Since(start)),
+				slog.String("client_ip", IPredacted), slog.Duration("duration", time.Since(start)),
 				slog.Int("request_body_bytes", spyW.bytesRead), slog.Int("response_body_bytes", spyR.responseBytes),
 				slog.Int("response_status", spyR.responseStatus),
 				slog.String("request_id", requestId),
@@ -165,4 +170,21 @@ func requestMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Request-ID", requestID)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func redactedIP(remoteAddr string) (string, error) {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return "", err
+	}
+	ip := net.ParseIP(host) //Si esto no es una IP válida, devuelve nil
+	if ip == nil {
+		return host, err //Por eso aquí devolvermos el host si no es una ip válida
+	}
+
+	if ipV4 := ip.To4(); ipV4 != nil { //Convierte la ip en IPv4 (para poder tomar cada campo). Si lo logra, se toma cada parte
+		return fmt.Sprintf("%d.%d.%d.x", ipV4[0], ipV4[1], ipV4[2]), nil //y se agrega así (descartas el último campo)
+	}
+
+	return ip.String(), nil //Si no logra convertir a IPv4, se devuelve la ip y ya. Es decir, si es IPv6, por ejemplo.
 }
