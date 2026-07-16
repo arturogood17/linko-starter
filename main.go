@@ -6,8 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -93,7 +95,6 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 }
 
 func initializeLogger() (*slog.Logger, closeFunction, error) {
-
 	handlers := []slog.Handler{
 		tint.NewHandler(os.Stderr, &tint.Options{
 			Level:       slog.LevelDebug,
@@ -128,6 +129,22 @@ func initializeLogger() (*slog.Logger, closeFunction, error) {
 }
 
 func resplaceAttr(groups []string, a slog.Attr) slog.Attr {
+	var sensitiveKeys = []string{"password", "key", "apikey", "secret", "pin", "creditcardno", "user"}
+
+	if slices.Contains(sensitiveKeys, a.Key) {
+		return slog.String(a.Key, "[REDACTED]")
+	}
+
+	if a.Value.Kind() == slog.KindString {
+		if wb, err := url.Parse(a.Value.String()); err == nil {
+			if _, ok := wb.User.Password(); ok {
+				wb.User = url.UserPassword(wb.User.Username(), "REDACTED")
+				return slog.String(a.Key, wb.String())
+			}
+		}
+
+	}
+
 	if a.Key == "error" {
 		err, ok := a.Value.Any().(error)
 		if !ok {
