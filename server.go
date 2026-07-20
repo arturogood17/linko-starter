@@ -10,9 +10,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"boot.dev/linko/internal/store"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const logContextKey contextKey = "log_context"
@@ -40,7 +44,7 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 
 	s.httpServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: requestMiddleware(RequestLogger(logger)(mux)),
+		Handler: CounterMiddlware(requestMiddleware(RequestLogger(logger)(mux))),
 	}
 
 	mux.HandleFunc("GET /", s.handlerIndex)
@@ -49,6 +53,7 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 	mux.Handle("GET /api/stats", s.authMiddleware(http.HandlerFunc(s.handlerStats)))
 	mux.Handle("GET /api/urls", s.authMiddleware(http.HandlerFunc(s.handlerListURLs)))
 	mux.HandleFunc("GET /{shortCode}", s.handlerRedirect)
+	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.HandleFunc("POST /admin/shutdown", s.handlerShutdown)
 
 	return s
@@ -187,4 +192,34 @@ func redactedIP(remoteAddr string) (string, error) {
 	}
 
 	return ip.String(), nil //Si no logra convertir a IPv4, se devuelve la ip y ya. Es decir, si es IPv6, por ejemplo.
+}
+
+var httpRequestsTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "http_requests_total",
+		Help: "Total number of HTTP requests.",
+	},
+	[]string{"method", "path", "status"},
+)
+
+type StatusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (s *StatusRecorder) WriteHeader(statuscode int) {
+	s.statusCode = statuscode
+	s.ResponseWriter.WriteHeader(statuscode)
+}
+
+func CounterMiddlware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &StatusRecorder{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+		}
+		next.ServeHTTP(rec, r)
+		sTc := strconv.Itoa(rec.statusCode)
+		httpRequestsTotal.WithLabelValues(r.Method, r.URL.Path, sTc).Inc()
+	})
 }
