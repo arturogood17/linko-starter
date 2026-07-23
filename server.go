@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"strconv"
 	"time"
@@ -55,6 +56,8 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 	mux.HandleFunc("GET /{shortCode}", s.handlerRedirect)
 	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.HandleFunc("POST /admin/shutdown", s.handlerShutdown)
+	mux.Handle("GET /debug/pprof/profile", s.authMiddleware(http.HandlerFunc(pprof.Profile)))
+	mux.Handle("GET /debug/pprof/", s.authMiddleware(http.HandlerFunc(pprof.Index)))
 
 	return s
 }
