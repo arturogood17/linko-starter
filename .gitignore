@@ -7,3 +7,5 @@ vendor/
 *.sh
 *.txt
 *.prof
+*.pprof
+*.svg
