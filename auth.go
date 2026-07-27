@@ -12,7 +12,10 @@ import (
 
 type contextKey string //se crea este tipo para evitar conflictos, por ejemplo, si tuvieses varias claves con el mismo nombre
 
-const UserContextKey contextKey = "user"
+const (
+	UserContextKey contextKey = "user"
+	valPass                   = "auth.validate_password"
+)
 
 var allowedUsers = map[string]string{
 	"frodo":   "$2a$10$B6O/n6teuCzpuh66jrUAdeaJ3WvXcxRkzpN0x7H.di9G9e/NGb9Me",
@@ -34,7 +37,7 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			httpError(r.Context(), w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
 			return
 		}
-		ok, err := s.validatePassword(password, stored)
+		ok, err := s.validatePassword(r.Context(), password, stored)
 		if err != nil {
 			s.logger.Info("error validating password", "user", username, "error", err)
 			httpError(r.Context(), w, fmt.Errorf("internal server error: %w", err), http.StatusInternalServerError)
@@ -52,7 +55,9 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *server) validatePassword(password, stored string) (bool, error) {
+func (s *server) validatePassword(ctx context.Context, password, stored string) (bool, error) {
+	_, span := tracer.Start(ctx, valPass)
+	span.End()
 	err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(password))
 	if err == bcrypt.ErrMismatchedHashAndPassword {
 		return false, nil

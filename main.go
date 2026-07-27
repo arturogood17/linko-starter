@@ -26,7 +26,10 @@ import (
 	"boot.dev/linko/internal/build"
 	"boot.dev/linko/internal/store"
 	"github.com/mattn/go-isatty"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer trace.Tracer
 
 type closeFunction func() error
 
@@ -221,5 +224,6 @@ func initTracing(ctx context.Context) (func(context.Context) error, error) {
 	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp, sdktrace.WithBatchTimeout(2*time.Second)),
 		sdktrace.WithResource(resource.Default()))
 	otel.SetTracerProvider(tp)
+	tracer = tp.Tracer("boot.dev/linko")
 	return tp.Shutdown, nil
 }
